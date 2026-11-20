@@ -376,9 +376,3 @@ def commentary(
         trimmed, _, _ = suffix.rstrip().rpartition(" ")
         suffix = trimmed
     return f"{prefix} {suffix.strip()}".strip() if suffix.strip() else prompt
-
-
-# --- Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
-# Hint: User input handling
-def milestone_6():  # TODO(milestone 6)
-    raise NotImplementedError("TODO(milestone 6)")

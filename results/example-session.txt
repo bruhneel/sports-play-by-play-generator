@@ -1,0 +1,8 @@
+$ python -m app.cli prepare
+Prepared 515 training lines and 56 validation lines.
+
+$ python -m app.cli commentate "Last over, 12 needed off 6 balls" --seed 42
+Last over, 12 needed off 6 balls, the slow ball fools the batter, but they sneak through for a single.
+
+$ python -m app.cli commentate "Penalty in the 89th minute" --seed 42
+Penalty in the 89th minute, the ball clips the underside of the bar and bounces over the line!

@@ -1,8 +1,4 @@
-"""Your tests. Each milestone in README.md gets one here: write the test first, then make it pass.
-
-They start skipped. Remove the `skip` line as you work on each milestone.
-"""
-import pytest
+"""Regression tests for the tokenizer, GPT, and local CLI."""
 
 def test_cleaning_and_split():
     from app.core import clean_lines, split_lines
@@ -119,8 +115,34 @@ def test_generation_stops_on_sentence_end_or_eos():
     assert generate_ids(model, tokenizer, [BOS], 10, top_k=1) == []
 
 
-# Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
-@pytest.mark.skip(reason="remove this line when you start milestone 6")
-def test_milestone_6():
-    raise NotImplementedError("write the test for milestone 6")
+def test_cli_end_to_end(tmp_path, monkeypatch, capsys):
+    from pathlib import Path
+    from shutil import copytree
+
+    import pytest
+
+    from app.cli import main
+
+    root = Path(__file__).resolve().parents[1]
+    copytree(root / "data", tmp_path / "data", ignore=lambda *_: {"__pycache__"})
+    monkeypatch.chdir(tmp_path)
+    prompt = "Last over, 12 needed off 6 balls"
+    with pytest.raises(SystemExit) as missing:
+        main(["commentate", prompt])
+    assert missing.value.code == 2
+    assert "No trained model found" in capsys.readouterr().err
+    main(["prepare"])
+    assert "515 training lines" in capsys.readouterr().out
+    main(["train", "--steps", "2", "--width", "16", "--layers", "1",
+          "--context", "16", "--batch-size", "2", "--vocab-size", "280"])
+    assert (tmp_path / "artifacts/model.pt").is_file()
+    assert "val " in capsys.readouterr().out
+    main(["commentate", prompt, "--max-tokens", "4", "--num-snippets", "2"])
+    drafts = capsys.readouterr().out.splitlines()
+    assert len(drafts) == 2 and all(line.startswith(prompt) for line in drafts)
+    inputs = iter([prompt, "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    main(["interactive", "--max-tokens", "4"])
+    assert prompt in capsys.readouterr().out
+
 
