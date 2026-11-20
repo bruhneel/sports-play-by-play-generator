@@ -1,9 +1,59 @@
-"""Your code. One stub per milestone; build them in order and keep each one small."""
+"""Corpus preparation, byte-pair encoding, and a compact GPT."""
+from html.parser import HTMLParser
+import random
+import re
+import unicodedata
 
-# --- Milestone 1: Gather a small corpus of sports commentary or news articles.
-# Hint: Corpus preparation
-def milestone_1():  # TODO(milestone 1)
-    raise NotImplementedError("TODO(milestone 1)")
+
+class _VisibleText(HTMLParser):
+    """Extract text while dropping non-article markup."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.hidden: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "nav", "footer", "header"}:
+            self.hidden.append(tag)
+        elif not self.hidden and tag in {"p", "div", "br", "li", "h1", "h2"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.hidden and tag == self.hidden[-1]:
+            self.hidden.pop()
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def clean_lines(text: str) -> list[str]:
+    """Remove markup, boilerplate, short lines and case-insensitive duplicates."""
+    parser = _VisibleText()
+    parser.feed(text)
+    parser.close()
+    quotes = str.maketrans("‘’“”", "''\"\"")
+    lines = unicodedata.normalize("NFKC", "".join(parser.parts)).translate(quotes).splitlines()
+    unique: dict[str, str] = {}
+    for raw in lines:
+        line = " ".join(raw.split())
+        key = line.casefold()
+        if len(line) >= 20 and not re.match(
+            r"^(copyright\b|all rights reserved\b|subscribe\b|privacy policy\b|navigation\b|terms of use\b)", key
+        ):
+            unique.setdefault(key, line)
+    return list(unique.values())
+
+
+def split_lines(lines: list[str], seed: int = 42) -> tuple[list[str], list[str]]:
+    """Hold out one tenth of unique lines under a stable seed."""
+    if len(lines) < 2:
+        raise ValueError("Corpus needs two or more usable lines.")
+    shuffled = list(lines)
+    random.Random(seed).shuffle(shuffled)
+    count = max(1, len(shuffled) // 10)
+    return shuffled[count:], shuffled[:count]
 
 
 # --- Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.

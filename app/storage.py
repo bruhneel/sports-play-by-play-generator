@@ -24,3 +24,15 @@ class Store:
 
     def all(self) -> dict:
         return dict(sorted(self._read().items()))
+
+
+def prepare(destination: Path = Path("artifacts/corpus.json"), seed: int = 42) -> dict:
+    """Build reproducible train and validation records from local data."""
+    from app.core import clean_lines, split_lines
+
+    train, val = split_lines(clean_lines(Path("data/commentary.txt").read_text(encoding="utf-8")), seed)
+    news = clean_lines(Path("data/news.txt").read_text(encoding="utf-8"))
+    result = {"train": train + news, "val": val, "news_lines": len(news), "seed": seed}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return result

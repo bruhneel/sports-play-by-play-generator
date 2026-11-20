@@ -4,10 +4,19 @@ They start skipped. Remove the `skip` line as you work on each milestone.
 """
 import pytest
 
-# Milestone 1: Gather a small corpus of sports commentary or news articles.
-@pytest.mark.skip(reason="remove this line when you start milestone 1")
-def test_milestone_1():
-    raise NotImplementedError("write the test for milestone 1")
+def test_cleaning_and_split():
+    from app.core import clean_lines, split_lines
+
+    assert clean_lines(
+        '<nav>Unwanted navigation link</nav><p>“What  a finish!” says the caller.</p>'
+        '<p>“WHAT a finish!” says the caller.</p><p>Hi</p>\n'
+        '<script>Fake long script content</script>\nCopyright 2024, all rights reserved'
+    ) == ['"What a finish!" says the caller.']
+    lines = [f"Example sports sentence {i}." for i in range(30)]
+    train, val = split_lines(lines)
+    assert (train, val) == split_lines(lines)
+    assert (len(train), len(val)) == (27, 3)
+    assert set(train).isdisjoint(val) and set(train + val) == set(lines)
 
 
 # Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.
