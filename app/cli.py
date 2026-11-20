@@ -20,6 +20,10 @@ def _temperature(value: str) -> float:
 
 
 def _sampling_options(command: argparse.ArgumentParser) -> None:
+    command.add_argument(
+        "--sport", choices=("cricket", "football", "basketball", "tennis"),
+        help="prefix a sport name to each prompt",
+    )
     command.add_argument("--max-tokens", type=_positive_int, default=32, help="maximum new BPE tokens")
     command.add_argument("--temperature", type=_temperature, default=0.8, help="sampling temperature")
     command.add_argument("--top-k", type=_positive_int, default=12, help="maximum candidates per step")
@@ -39,6 +43,10 @@ def _run_generation(args: argparse.Namespace) -> None:
         raise ValueError("No trained model found. Run train first.") from exc
 
     def show(prompt: str) -> None:
+        if not prompt.strip():
+            raise ValueError("Enter a nonempty commentary prompt.")
+        if args.sport:
+            prompt = f"{args.sport.title()}, {prompt.strip()}"
         for i in range(args.num_snippets):
             result = commentary(
                 model, tokenizer, prompt, args.max_tokens,

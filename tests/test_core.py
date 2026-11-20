@@ -140,6 +140,8 @@ def test_cli_end_to_end(tmp_path, monkeypatch, capsys):
     main(["commentate", prompt, "--max-tokens", "4", "--num-snippets", "2"])
     drafts = capsys.readouterr().out.splitlines()
     assert len(drafts) == 2 and all(line.startswith(prompt) for line in drafts)
+    main(["commentate", "4 seconds left on the clock", "--sport", "basketball", "--max-tokens", "4"])
+    assert capsys.readouterr().out.startswith("Basketball, 4 seconds left on the clock")
     inputs = iter([prompt, "/quit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
     main(["interactive", "--max-tokens", "4"])

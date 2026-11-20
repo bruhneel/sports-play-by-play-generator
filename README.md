@@ -53,6 +53,24 @@ Byte-pair encoding starts with UTF-8 bytes and repeatedly merges the most freque
 
 Training uses AdamW, clipped gradients, and cosine learning-rate decay. Generation feeds sampled tokens back into the model, ends at sentence punctuation or the token budget, and trims a trailing partial byte-sized word when possible. Lower temperatures make the distribution more peaked. A smaller top-k excludes more candidates, with top-k 1 selecting the most likely token every time.
 
+## Sampling comparison
+
+On the same cricket prompt and checkpoint:
+
+| Settings | Actual output |
+| --- | --- |
+| Greedy, top-k 1 | Last over, 12 needed off 6 balls, the bowler charges in, and the batter sends it racing through cover. |
+| Top-k 12, temperature 0.8, seed 42 | Last over, 12 needed off 6 balls, the slow ball fools the batter, but they sneak through for a single. |
+
+The seed makes a sampled run repeatable for a fixed model and PyTorch build. Use `--sport basketball` to prefix the prompt with the sport name. The prefix is a text hint.
+
+```text
+$ python -m app.cli commentate "4 seconds left on the clock" --sport basketball
+Basketball, 4 seconds left on the clock, the defender gets a fingertip to the shot and the buzzer sounds.
+```
+
+The final validation perplexity was **1.256** per BPE token, computed as the exponential of the validation cross-entropy on the 56 held-out synthetic lines.
+
 ## Limitations
 
 The corpus is small and predominantly templated. The validation split holds out lines, but it shares scenario and play templates with training, so the loss overstates how well the model generalizes to novel sports situations. Prompts can yield repetitive, rough, or incoherent text. The model does not track a score or validate sports rules. It is designed for fictional commentary.
