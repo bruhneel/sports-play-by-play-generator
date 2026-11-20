@@ -9,6 +9,7 @@ import unicodedata
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 
 class _VisibleText(HTMLParser):
@@ -251,10 +252,69 @@ class GPT(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
-# --- Milestone 4: Train the GPT model using the sports text data.
-# Hint: Model training loop
-def milestone_4():  # TODO(milestone 4)
-    raise NotImplementedError("TODO(milestone 4)")
+def _windows(rows: Sequence[Sequence[int]], context: int, rng: random.Random) -> tuple[Tensor, Tensor]:
+    """Sample a context window from each selected document and pad on the right."""
+    windows = []
+    for row in rows:
+        start = rng.randrange(max(1, len(row) - context))
+        part = list(row[start:start + context + 1])
+        windows.append(part + [PAD] * (context + 1 - len(part)))
+    tokens = torch.tensor(windows, dtype=torch.long)
+    return tokens[:, :-1], tokens[:, 1:]
+
+
+def _loss(model: GPT, x: Tensor, targets: Tensor, reduction: str = "mean") -> Tensor:
+    return F.cross_entropy(
+        model(x).flatten(0, 1), targets.flatten(), ignore_index=PAD, reduction=reduction,
+    )
+
+
+@torch.no_grad()
+def evaluate(model: GPT, rows: Sequence[Sequence[int]]) -> float:
+    """Evaluate fixed windows with each non-padding token weighted equally."""
+    model.eval()
+    rng = random.Random(761)
+    loss = 0.0
+    count = 0
+    for offset in range(0, len(rows), 32):
+        x, y = _windows(rows[offset:offset + 32], model.config.context, rng)
+        loss += _loss(model, x, y, reduction="sum").item()
+        count += int(y.ne(PAD).sum())
+    return loss / count
+
+
+def train_gpt(
+    model: GPT, train: Sequence[Sequence[int]], val: Sequence[Sequence[int]],
+    steps: int, batch_size: int, seed: int, *, log: bool = True,
+) -> list[dict[str, float | int]]:
+    """Train on seeded context windows with clipped AdamW and cosine decay."""
+    if min(steps, batch_size, len(train), len(val)) < 1:
+        raise ValueError("Training requires a positive step and batch count and both data splits.")
+    if any(len(row) < 2 for row in (*train, *val)):
+        raise ValueError("Training sequences need at least two tokens.")
+    rng = random.Random(seed)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.002)
+    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps, eta_min=0.0003)
+    history = []
+    recent_losses = []
+    for step in range(1, steps + 1):
+        model.train()
+        x, y = _windows(rng.choices(train, k=batch_size), model.config.context, rng)
+        optimizer.zero_grad(set_to_none=True)
+        loss = _loss(model, x, y)
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        schedule.step()
+        recent_losses.append(loss.item())
+        if step == 1 or step == steps or step % max(1, steps // 5) == 0:
+            train_loss = sum(recent_losses) / len(recent_losses)
+            validation_loss = evaluate(model, val)
+            history.append({"step": step, "train_loss": train_loss, "val_loss": validation_loss})
+            recent_losses.clear()
+            if log:
+                print(f"step {step:4d}  train {train_loss:.4f}  val {validation_loss:.4f}")
+    return history
 
 
 # --- Milestone 5: Develop a text generation function to produce short commentary snippets.

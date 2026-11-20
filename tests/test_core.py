@@ -58,10 +58,26 @@ def test_gpt_shapes_causality_and_parameters():
     assert model.parameter_count() == (20 + 8 + 2) * width + 2 * (12 * width**2 + 13 * width)
 
 
-# Milestone 4: Train the GPT model using the sports text data.
-@pytest.mark.skip(reason="remove this line when you start milestone 4")
-def test_milestone_4():
-    raise NotImplementedError("write the test for milestone 4")
+def test_overfit_and_checkpoint(tmp_path):
+    import torch
+
+    from app.core import BytePairTokenizer, GPT, GPTConfig, train_gpt
+    from app.storage import load_checkpoint, save_checkpoint
+
+    torch.set_num_threads(1)
+    torch.manual_seed(42)
+    tokenizer = BytePairTokenizer.fit(["Goal for the home side!"] * 8)
+    model = GPT(GPTConfig(tokenizer.size, context=16, width=16, layers=1))
+    ids = tokenizer.encode("Goal for the home side!", boundaries=True)
+    history = train_gpt(model, [ids] * 8, [ids] * 2, 120, 4, 42, log=False)
+    assert history[-1]["val_loss"] < history[0]["val_loss"] * 0.6
+    assert history[-1]["train_loss"] < history[0]["train_loss"]
+    path = tmp_path / "model.pt"
+    save_checkpoint(path, model, tokenizer)
+    loaded, bpe = load_checkpoint(path)
+    x = torch.tensor([ids[:16]])
+    torch.testing.assert_close(loaded(x), model.eval()(x), atol=0, rtol=0)
+    assert bpe.encode("Goal!") == tokenizer.encode("Goal!")
 
 
 # Milestone 5: Develop a text generation function to produce short commentary snippets.

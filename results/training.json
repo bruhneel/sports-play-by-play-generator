@@ -1,0 +1,48 @@
+{
+  "seed": 42,
+  "config": {
+    "vocab_size": 512,
+    "context": 64,
+    "width": 96,
+    "heads": 4,
+    "layers": 2
+  },
+  "batch_size": 16,
+  "parameter_count": 279168,
+  "train_lines": 515,
+  "val_lines": 56,
+  "news_lines": 3,
+  "loss": [
+    {
+      "step": 1,
+      "train_loss": 6.2598981857299805,
+      "val_loss": 5.951729066910282
+    },
+    {
+      "step": 140,
+      "train_loss": 1.8481994224109237,
+      "val_loss": 0.3838710697015859
+    },
+    {
+      "step": 280,
+      "train_loss": 0.2759684553103788,
+      "val_loss": 0.2684911121421146
+    },
+    {
+      "step": 420,
+      "train_loss": 0.23730093836784363,
+      "val_loss": 0.2376129660188877
+    },
+    {
+      "step": 560,
+      "train_loss": 0.2233540056007249,
+      "val_loss": 0.23462194451538648
+    },
+    {
+      "step": 700,
+      "train_loss": 0.21424450001546314,
+      "val_loss": 0.2279910601778514
+    }
+  ],
+  "validation_perplexity": 1.2560740963031245
+}

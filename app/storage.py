@@ -2,6 +2,10 @@
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core import BytePairTokenizer, GPT
 
 
 class Store:
@@ -35,4 +39,72 @@ def prepare(destination: Path = Path("artifacts/corpus.json"), seed: int = 42) -
     result = {"train": train + news, "val": val, "news_lines": len(news), "seed": seed}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return result
+
+
+def save_checkpoint(path: Path, model: "GPT", tokenizer: "BytePairTokenizer") -> None:
+    """Save the tokenizer and model state together for consistent reloading."""
+    from dataclasses import asdict
+
+    import torch
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {"config": asdict(model.config), "state": model.state_dict(),
+         "tokenizer": tokenizer.to_record()}, path,
+    )
+
+
+def load_checkpoint(path: Path = Path("artifacts/model.pt")) -> tuple["GPT", "BytePairTokenizer"]:
+    """Reload a CPU checkpoint using tensors and primitive metadata only."""
+    import torch
+
+    from app.core import BytePairTokenizer, GPT, GPTConfig
+
+    record = torch.load(path, map_location="cpu", weights_only=True)
+    tokenizer = BytePairTokenizer.from_record(record["tokenizer"])
+    config = GPTConfig(**record["config"])
+    if config.vocab_size != tokenizer.size:
+        raise ValueError("Model and tokenizer vocabulary sizes differ.")
+    model = GPT(config)
+    model.load_state_dict(record["state"])
+    return model.eval(), tokenizer
+
+
+def train(
+    steps: int = 700, seed: int = 42, width: int = 96, layers: int = 2,
+    context: int = 64, batch_size: int = 16, vocab_size: int = 512,
+) -> dict:
+    """Prepare a seeded corpus, train the tokenizer and GPT, and persist results."""
+    from dataclasses import asdict
+    from math import exp
+
+    import torch
+
+    from app.core import BytePairTokenizer, GPT, GPTConfig, train_gpt
+
+    torch.manual_seed(seed)
+    torch.set_num_threads(2)
+    corpus = prepare(seed=seed)
+    tokenizer = BytePairTokenizer.fit(corpus["train"], vocab_size)
+    model = GPT(GPTConfig(tokenizer.size, context=context, width=width, layers=layers))
+    training, validation = (
+        [tokenizer.encode(line, boundaries=True) for line in corpus[key]]
+        for key in ("train", "val")
+    )
+    print(f"Training {model.parameter_count():,} parameters on {len(training)} lines.")
+    history = train_gpt(model, training, validation, steps, batch_size, seed)
+    save_checkpoint(Path("artifacts/model.pt"), model, tokenizer)
+    Path("artifacts/tokenizer.json").write_text(
+        json.dumps(tokenizer.to_record(), indent=2) + "\n", encoding="utf-8"
+    )
+    result = {
+        "seed": seed, "config": asdict(model.config), "batch_size": batch_size,
+        "parameter_count": model.parameter_count(), "train_lines": len(training),
+        "val_lines": len(validation), "news_lines": corpus["news_lines"], "loss": history,
+        "validation_perplexity": exp(history[-1]["val_loss"]),
+    }
+    path = Path("results/training.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
