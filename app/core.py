@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from html.parser import HTMLParser
+import math
 import random
 import re
 import unicodedata
@@ -317,10 +318,64 @@ def train_gpt(
     return history
 
 
-# --- Milestone 5: Develop a text generation function to produce short commentary snippets.
-# Hint: Sampling strategy for generation
-def milestone_5():  # TODO(milestone 5)
-    raise NotImplementedError("TODO(milestone 5)")
+def sample_token(logits: Tensor, temperature: float, top_k: int, rng: torch.Generator) -> int:
+    """Draw from the temperature-scaled top-k entries of one logits vector."""
+    if not math.isfinite(temperature) or temperature <= 0 or top_k < 1:
+        raise ValueError("Temperature and top-k must be positive, with finite temperature.")
+    scores, candidates = logits.topk(min(top_k, logits.numel()))
+    probabilities = ((scores - scores[0]) / temperature).softmax(dim=0)
+    choice = torch.multinomial(probabilities, 1, generator=rng)
+    return int(candidates[choice].item())
+
+
+@torch.inference_mode()
+def generate_ids(
+    model: GPT, tokenizer: BytePairTokenizer, prefix: list[int], max_new_tokens: int = 32,
+    temperature: float = 0.8, top_k: int = 12, seed: int = 42,
+) -> list[int]:
+    """Decode one token at a time, stopping on EOS, sentence punctuation, or budget."""
+    if not prefix or max_new_tokens < 1:
+        raise ValueError("Provide a prompt and at least one new token.")
+    model.eval()
+    rng = torch.Generator().manual_seed(seed)
+    ids = list(prefix)
+    generated = []
+    for _ in range(max_new_tokens):
+        window = torch.tensor([ids[-model.config.context:]], dtype=torch.long)
+        logits = model(window)[0, -1].clone()
+        logits[[BOS, PAD]] = float("-inf")
+        token = sample_token(logits, temperature, top_k, rng)
+        if token == EOS:
+            break
+        generated.append(token)
+        ids.append(token)
+        if tokenizer.vocab[token].endswith((b".", b"!", b"?")):
+            break
+    return generated
+
+
+def commentary(
+    model: GPT, tokenizer: BytePairTokenizer, prompt: str, max_new_tokens: int = 32,
+    temperature: float = 0.8, top_k: int = 12, seed: int = 42,
+) -> str:
+    """Generate one fictional commentary sentence from a scenario prompt."""
+    prompt = " ".join(prompt.split())
+    if not prompt:
+        raise ValueError("Enter a nonempty commentary prompt.")
+    prefix = prompt if prompt.endswith((",", ".", "!", "?", ":")) else prompt + ","
+    ids = generate_ids(
+        model, tokenizer, [BOS, *tokenizer.encode(prefix)], max_new_tokens,
+        temperature, top_k, seed,
+    )
+    suffix = tokenizer.decode(ids, errors="ignore")
+    suffix = "".join(c if c.isprintable() else " " for c in suffix)
+    complete = re.match(r".*?[.!?](?=\s|$)", suffix)
+    if complete:
+        suffix = complete[0]
+    elif ids and len(ids) == max_new_tokens and len(tokenizer.vocab[ids[-1]]) == 1:
+        trimmed, _, _ = suffix.rstrip().rpartition(" ")
+        suffix = trimmed
+    return f"{prefix} {suffix.strip()}".strip() if suffix.strip() else prompt
 
 
 # --- Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.

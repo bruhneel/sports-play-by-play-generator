@@ -80,10 +80,43 @@ def test_overfit_and_checkpoint(tmp_path):
     assert bpe.encode("Goal!") == tokenizer.encode("Goal!")
 
 
-# Milestone 5: Develop a text generation function to produce short commentary snippets.
-@pytest.mark.skip(reason="remove this line when you start milestone 5")
-def test_milestone_5():
-    raise NotImplementedError("write the test for milestone 5")
+def test_generation_limit_seed_and_top_k():
+    import torch
+
+    from app.core import BOS, BytePairTokenizer, GPT, GPTConfig, generate_ids, sample_token
+
+    torch.set_num_threads(1)
+    torch.manual_seed(2)
+    tokenizer = BytePairTokenizer()
+    model = GPT(GPTConfig(tokenizer.size, context=8, width=16, layers=1))
+    prefix = [BOS, *tokenizer.encode("Goal")]
+    a = generate_ids(model, tokenizer, prefix, 3, top_k=4, seed=22)
+    assert a == generate_ids(model, tokenizer, prefix, 3, top_k=4, seed=22)
+    assert 1 <= len(a) <= 3
+    assert all(i in tokenizer.vocab for i in a)
+    rng = torch.Generator().manual_seed(3)
+    scores = torch.tensor([0.0, 8.0, 1.0, 7.5])
+    assert {sample_token(scores, 1, 2, rng) for _ in range(30)} == {1, 3}
+    assert sample_token(scores, 1, 1, rng) == 1
+
+
+def test_generation_stops_on_sentence_end_or_eos():
+    import torch
+
+    from app.core import BOS, EOS, BytePairTokenizer, GPT, GPTConfig, generate_ids
+
+    class FixedGPT(GPT):
+        def forward(self, ids):
+            logits = torch.zeros((1, ids.shape[1], self.config.vocab_size))
+            logits[..., self.token] = 10
+            return logits
+
+    tokenizer = BytePairTokenizer()
+    model = FixedGPT(GPTConfig(tokenizer.size, context=8, width=16, layers=1))
+    model.token = ord("!")
+    assert generate_ids(model, tokenizer, [BOS], 10, top_k=1) == [ord("!")]
+    model.token = EOS
+    assert generate_ids(model, tokenizer, [BOS], 10, top_k=1) == []
 
 
 # Milestone 6: Create a CLI where users can input a prompt and receive generated commentary.
