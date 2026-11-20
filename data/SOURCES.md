@@ -1,6 +1,6 @@
 # Corpus sources
 
-`news.txt` contains short text extracts, in this order. Each is attributed to the Wikinews contributors named in the article history. The links identify the source and its contributor history. Formatting was removed and the second extract was shortened. No photos, third-party quotations, or linked publications were copied.
+`news.txt` contains short text extracts, in this order. Each is attributed to the Wikinews contributors named in the article history. The links identify the source and its contributor history. Formatting was removed and each extract preserves the original English wording. No photos, third-party quotations, or linked publications were copied.
 
 | Title | Source | License |
 | --- | --- | --- |

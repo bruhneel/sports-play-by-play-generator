@@ -19,10 +19,23 @@ def test_cleaning_and_split():
     assert set(train).isdisjoint(val) and set(train + val) == set(lines)
 
 
-# Milestone 2: Implement the byte-pair tokenizer and create embeddings from the sports text.
-@pytest.mark.skip(reason="remove this line when you start milestone 2")
-def test_milestone_2():
-    raise NotImplementedError("write the test for milestone 2")
+def test_bpe_roundtrip_determinism_and_embeddings():
+    import json
+
+    import torch
+
+    from app.core import BOS, EOS, BytePairTokenizer, InputEmbeddings
+
+    source = ["The ball rockets through cover! 🎾", "The ball goes over cover."] * 5
+    bpe = BytePairTokenizer.fit(source, 290)
+    assert bpe.merges and bpe.merges == BytePairTokenizer.fit(reversed(source), 290).merges
+    text = "  Élan—🏀\nThe ball\tgoes through cover!"
+    ids = bpe.encode(text, boundaries=True)
+    assert ids[0] == BOS and ids[-1] == EOS
+    assert bpe.decode(ids) == text
+    restored = BytePairTokenizer.from_record(json.loads(json.dumps(bpe.to_record())))
+    assert restored.encode(text, boundaries=True) == ids
+    assert InputEmbeddings(bpe.size, len(ids), 16)(torch.tensor([ids])).shape == (1, len(ids), 16)
 
 
 # Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
