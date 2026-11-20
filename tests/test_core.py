@@ -38,10 +38,24 @@ def test_bpe_roundtrip_determinism_and_embeddings():
     assert InputEmbeddings(bpe.size, len(ids), 16)(torch.tensor([ids])).shape == (1, len(ids), 16)
 
 
-# Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
-@pytest.mark.skip(reason="remove this line when you start milestone 3")
-def test_milestone_3():
-    raise NotImplementedError("write the test for milestone 3")
+def test_gpt_shapes_causality_and_parameters():
+    import torch
+
+    from app.core import GPT, GPTConfig
+
+    torch.set_num_threads(1)
+    torch.manual_seed(42)
+    model = GPT(GPTConfig(20, context=8, width=16, layers=2)).eval()
+    ids = torch.tensor([[1, 2, 3, 4, 5, 6]])
+    changed = ids.clone()
+    changed[:, 4:] = 7
+    before, after = model(ids), model(changed)
+    assert before.shape == (1, 6, 20)
+    torch.testing.assert_close(before[:, :4], after[:, :4], atol=0, rtol=0)
+    assert not torch.allclose(before[:, 4:], after[:, 4:])
+    assert model.head.weight is model.embedding.tokens.weight
+    width = 16
+    assert model.parameter_count() == (20 + 8 + 2) * width + 2 * (12 * width**2 + 13 * width)
 
 
 # Milestone 4: Train the GPT model using the sports text data.

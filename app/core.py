@@ -1,6 +1,7 @@
 """Corpus preparation, byte-pair encoding, and a compact GPT."""
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from html.parser import HTMLParser
 import random
 import re
@@ -164,10 +165,90 @@ class InputEmbeddings(nn.Module):
         return self.tokens(ids) + self.positions(positions)
 
 
-# --- Milestone 3: Build the causal self-attention mechanism and assemble the transformer block.
-# Hint: Causal self-attention, transformer block
-def milestone_3():  # TODO(milestone 3)
-    raise NotImplementedError("TODO(milestone 3)")
+@dataclass(frozen=True)
+class GPTConfig:
+    vocab_size: int
+    context: int = 64
+    width: int = 96
+    heads: int = 4
+    layers: int = 2
+
+    def __post_init__(self) -> None:
+        if min(self.vocab_size, self.context, self.width, self.heads, self.layers) < 1:
+            raise ValueError("GPT dimensions must be positive.")
+        if self.width % self.heads:
+            raise ValueError("Model width must be divisible by head count.")
+
+
+class CausalAttention(nn.Module):
+    """Scaled dot-product attention with an explicit triangular mask."""
+
+    def __init__(self, config: GPTConfig) -> None:
+        super().__init__()
+        self.heads = config.heads
+        self.qkv = nn.Linear(config.width, 3 * config.width)
+        self.output = nn.Linear(config.width, config.width)
+        self.register_buffer(
+            "mask", torch.ones(config.context, config.context, dtype=torch.bool).tril(),
+            persistent=False,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        batch, length, width = x.shape
+        dimension = width // self.heads
+        q, k, v = self.qkv(x).reshape(batch, length, 3, self.heads, dimension).permute(2, 0, 3, 1, 4)
+        scores = q @ k.transpose(-2, -1) / dimension**0.5
+        scores = scores.masked_fill(~self.mask[:length, :length], float("-inf"))
+        values = scores.softmax(dim=-1) @ v
+        return self.output(values.transpose(1, 2).reshape(batch, length, width))
+
+
+class TransformerBlock(nn.Module):
+    """Pre-normalized attention and MLP with residual connections."""
+
+    def __init__(self, config: GPTConfig) -> None:
+        super().__init__()
+        self.norm1 = nn.LayerNorm(config.width)
+        self.attention = CausalAttention(config)
+        self.norm2 = nn.LayerNorm(config.width)
+        self.mlp = nn.Sequential(
+            nn.Linear(config.width, 4 * config.width), nn.GELU(),
+            nn.Linear(4 * config.width, config.width),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.attention(self.norm1(x))
+        return x + self.mlp(self.norm2(x))
+
+
+class GPT(nn.Module):
+    """Decoder-only transformer for next-token prediction."""
+
+    def __init__(self, config: GPTConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.embedding = InputEmbeddings(config.vocab_size, config.context, config.width)
+        self.blocks = nn.Sequential(*(TransformerBlock(config) for _ in range(config.layers)))
+        self.norm = nn.LayerNorm(config.width)
+        self.head = nn.Linear(config.width, config.vocab_size, bias=False)
+        self.apply(self._initialize)
+        self.head.weight = self.embedding.tokens.weight
+
+    @staticmethod
+    def _initialize(layer: nn.Module) -> None:
+        if isinstance(layer, (nn.Linear, nn.Embedding)):
+            nn.init.normal_(layer.weight, std=0.02)
+        if isinstance(layer, nn.Linear) and layer.bias is not None:
+            nn.init.zeros_(layer.bias)
+
+    def forward(self, ids: Tensor) -> Tensor:
+        if ids.ndim != 2 or not 1 <= ids.shape[1] <= self.config.context:
+            raise ValueError("Expected a batch of nonempty token sequences within the context limit.")
+        return self.head(self.norm(self.blocks(self.embedding(ids))))
+
+    def parameter_count(self) -> int:
+        """Count the tied embedding/head matrix once."""
+        return sum(p.numel() for p in self.parameters())
 
 
 # --- Milestone 4: Train the GPT model using the sports text data.
